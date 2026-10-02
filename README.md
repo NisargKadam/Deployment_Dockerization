@@ -1,167 +1,168 @@
-# Humanizer Agent
+# Deployments and observability
 
-A FastAPI service and responsive web interface that use OpenAI, LangChain, and LangGraph to rewrite
-text in a more natural, human style. The graph alternates between a writer and an evaluator, stopping
-when the quality score reaches the configured threshold or the maximum number of passes is reached.
+A classroom lab built from [NisargKadam/Deployment_Dockerization](https://github.com/NisargKadam/Deployment_Dockerization).
+The Humanizer app runs a bounded LangGraph rewrite/review workflow. Students investigate it in
+LangSmith, build a Docker image, run a container, and deploy to Railway. Azure and AWS are discussion
+sections, with no infrastructure provisioned there.
 
-```text
-request -> rewrite -> evaluate -> good enough / pass limit -> response
-                ^         |
-                +---------+ needs another pass
-```
-
-## Why LangGraph and LangChain are here
-
-The original repository was only a deployment scaffold. It had health endpoints and configuration,
-but no model invocation or agent workflow, so the `OPENAI_API_KEY` was only checked by `/ready` and
-was never used.
-
-The implementation now uses:
-
-- `langgraph` to define and run the bounded rewrite/evaluate loop in
-  `app/agent/workflow.py`.
-- `langchain-openai` to connect that graph to OpenAI through `ChatOpenAI`.
-- `langchain-core` for model messages and runnable interfaces.
-
-The large `langchain` convenience package is not needed. Modern LangChain projects can install only
-the provider package they use; `langchain-openai` supplies the OpenAI integration.
-
-## Requirements
-
-- Python 3.12 for local development, or Docker with Docker Compose
-- An OpenAI API key with access to the model configured in `OPENAI_MODEL`
-
-## Configure the environment
-
-The `.env` file is excluded from both Git and Docker build context. If it does not already exist,
-create it from the safe template:
-
-```bash
-cp .env.example .env
-```
-
-At minimum, set:
-
-```dotenv
-OPENAI_API_KEY=your-key-here
-OPENAI_MODEL=gpt-4.1-mini
-```
-
-Do not commit `.env` or paste the key into source code.
+**Start with the [standalone HTML class guide](app/static/guide.html)**. It is also served at `/guide`.
+It includes a 90-minute lesson plan, copyable commands, expected results, presenter view, topic
+search, progress checkboxes, quizzes, troubleshooting, and print styling. No CDN or build tool is
+needed to open it offline.
 
 ## Run locally
 
-From the repository root:
-
-```bash
-make setup
-make run
-```
-
-The service starts at <http://localhost:8000>. Open that address for the Humanizer UI. Interactive
-API documentation remains available at <http://localhost:8000/docs>.
-
-Equivalent commands without `make`:
+Python 3.12 is the tested version. From this directory:
 
 ```bash
 python3.12 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m app.main
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+cp .env.example .env   # Only on first setup; do not overwrite an existing .env
+python -m app.main
 ```
 
-## Run with Docker
+Windows equivalents are in the guide. Open **http://localhost:8010**. `PORT=8010` in the example
+avoids conflicting with other services on 8000. Without an env file, the Python default is 8000.
 
-The UI and API run together in one FastAPI process and one Docker container. No separate frontend
-image, Node server, or second port is required. The simplest Docker command is:
+The example starts in **demo mode**: deterministic text replacements, synthetic review scores,
+measured timings, no model calls. Set `APP_MODE=live` and `OPENAI_API_KEY` for actual OpenAI calls.
+Restart after changing `.env`.
+
+## Connect LangSmith
+
+Create a key in your own LangSmith workspace and configure `.env` privately:
+
+```dotenv
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your_private_key
+LANGSMITH_PROJECT=deployments-observability
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+```
+
+Use the correct regional endpoint and set `LANGSMITH_WORKSPACE_ID` when your key requires it.
+The backend creates an explicit SDK client, so the `.env` values do not depend on global SDK env loading.
 
 ```bash
-docker compose up --build
+python scripts/check_setup.py --verify-langsmith
+python scripts/smoke.py --verify-trace
 ```
 
-Stop it with `Ctrl+C`, then remove the stopped container and network with:
+The first command checks workspace access. The second submits fictional text and polls for its
+completed trace. This spends model credits if the server is in live mode. The pinned SDK currently
+warns that its `read_run` method is deprecated; it remains supported in this version.
+
+- Root trace: `humanize.request`, with a UUID also returned in `X-Request-ID` and the response body.
+- Nested graph: `humanizer.graph`, rewrite/evaluate nodes, and actual model calls in live mode.
+- Metadata/tags: mode, environment, scenario, service, lesson, and request ID.
+- JSON logs: correlated completion/failure events, latency, score, passes, provider token counts.
+- UI: measured latency/step durations, model call count, input/output tokens, authenticated trace link.
+- Trace delivery is asynchronous. **Configured or queued is not a delivery confirmation**.
+- In demo mode, enable `ENABLE_DEMO_SCENARIOS=true` for normal, slow-writer, and intentional-error runs.
+- API keys remain on the server. `LANGSMITH_HIDE_INPUTS/OUTPUTS=true` hide ordinary traced payloads;
+  error strings and metadata need separate consideration. Use fictional classroom text.
+
+The model review score is an opinion, not an AI detector or a guarantee of factual accuracy.
+Live calls may run up to two model calls per pass, plus provider retries. `REQUEST_TIMEOUT_SECONDS`
+is per provider request, not a total workflow deadline. LangSmith supplies supported model cost
+estimates; the application does not invent prices or token usage.
+
+## Docker
 
 ```bash
-docker compose down
+docker build -t humanizer-lab:1.0 .
+docker create --name humanizer-class --env-file .env -e PORT=8000 -e ENVIRONMENT=docker -p 127.0.0.1:8011:8000 humanizer-lab:1.0
+docker start humanizer-class
 ```
 
-To run without Compose:
+Open **http://localhost:8011**. The internal port is 8000; the host port is 8011.
 
 ```bash
-docker build -t humanizer-agent .
-docker run --rm --env-file .env -p 8000:8000 humanizer-agent
+docker logs --tail 30 humanizer-class
+docker inspect --format '{{.State.Health.Status}}' humanizer-class
+python scripts/smoke.py --url http://localhost:8011 --verify-trace
 ```
 
-## Call the API
+Or use `docker compose up --build -d` (stop the named container first to free port 8011).
+The image runs as a non-root user, includes `/guide`, and excludes `.env`, Git history, and the local
+virtualenv. `requirements.lock` pins transitive runtime dependencies for consistent builds;
+`requirements.txt` lists the direct dependencies. Refresh the lock intentionally with
+`uv pip compile requirements.txt -o requirements.lock --python-version 3.12 --universal`.
 
-You can use the browser interface at <http://localhost:8000>, or call the same backend directly.
+Rebuild/recreate after code changes. Recreate after environment changes; restarting alone does not
+pick up a new env file.
 
-Check process health and configuration readiness:
+## Railway
+
+The guide covers both CLI upload and GitHub integration. CLI upload can deploy this checkout before
+the classroom branch is published to GitHub.
 
 ```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/ready
+railway login
+railway init --name deployments-observability
+railway add --service humanizer
+railway service link humanizer
+# Add runtime variables privately in the service's Variables tab.
+railway up
+railway domain
 ```
 
-Humanize text:
+`railway.json` selects the Dockerfile and `/health` deployment check. The app listens on `0.0.0.0`
+and reads Railway's `PORT`. Use `ENVIRONMENT=railway` to identify cloud traces.
+
+Set `CLASS_ACCESS_TOKEN` for a shared classroom guard on `/humanize`; the UI reveals a password
+field when required. A public live model service needs this guard and, for use beyond class,
+proper authentication, rate limiting, and budgets. `/health`, `/guide`, and `/api/config` do not
+expose credentials. Health/readiness only check process/configuration, not provider connectivity.
+
+## Verify and maintain
 
 ```bash
-curl --request POST http://localhost:8000/humanize \
-  --header 'Content-Type: application/json' \
-  --data '{
-    "text": "Furthermore, it is important to note that this solution facilitates improved outcomes.",
-    "audience": "general readers",
-    "tone": "clear and conversational"
-  }'
+python -m pytest
+python -m ruff check .
+python -m ruff format --check .
+node --check app/static/app.js
+python scripts/build_guide.py
 ```
 
-Example response shape:
+Tests use fake models and isolate local credentials. They cover graph bounds, API responses,
+request correlation, scenario gating, token access, secret-safe configuration, provider error
+handling, and LangSmith parent/child instrumentation without sending traces.
 
-```json
-{
-  "text": "This approach can lead to better results.",
-  "score": 91.0,
-  "passes": 2,
-  "model": "gpt-4.1-mini"
-}
-```
+Edit `scripts/build_guide.py` and regenerate the HTML. Dockerfile and Railway examples are embedded
+from their actual files. Keep the generated `app/static/guide.html` in the repository.
 
-Each request can make up to `MAX_PASSES` rewrite calls plus the same number of evaluator calls, so
-latency and OpenAI usage increase with the number of passes. The workflow does not call the model for
-`/health`, `/ready`, or `/docs`.
+## Main files
 
-## Configuration
+| File | Teaching purpose |
+| --- | --- |
+| `app/agent/workflow.py` | Real rewrite/evaluate loop |
+| `app/agent/demo.py` | Deterministic classroom scenarios |
+| `app/telemetry.py` | Explicit LangSmith client + usage callback |
+| `app/api/routes.py` | Root trace + request ID + API |
+| `app/static/` | App UI and self-contained guide |
+| `Dockerfile` / `compose.yaml` | Image build and local containers |
+| `railway.json` | Cloud build/deployment configuration |
+| `scripts/check_setup.py` / `scripts/smoke.py` | Safe diagnostics + trace verification |
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `OPENAI_API_KEY` | required for `/humanize` | OpenAI credential |
-| `OPENAI_MODEL` | `gpt-4.1-mini` | Model used for rewriting and evaluation |
-| `PORT` | `8000` | HTTP port |
-| `ENVIRONMENT` | `local` | Runtime environment label |
-| `LOG_LEVEL` | `INFO` | Application log level |
-| `MAX_INPUT_CHARS` | `12000` | Maximum request text length |
-| `MAX_PASSES` | `3` | Maximum rewrite/evaluate cycles |
-| `SCORE_THRESHOLD` | `85` | Score that ends the graph early |
-| `REQUEST_TIMEOUT_SECONDS` | `120` | Timeout for each model request |
-| `MAX_TOKENS_PER_REQUEST` | `8000` | Maximum completion tokens per model request |
-
-Other variables in `.env.example` are reserved for storage and MCP extensions; they are not active
-in this stateless version.
-
-## Test and lint
-
-The unit tests use fake models and never spend OpenAI credits:
+The classroom version is on branch `class/deployments-observability`. Students should clone it with:
 
 ```bash
-make test
-make lint
+git clone --branch class/deployments-observability https://github.com/NisargKadam/Deployment_Dockerization.git
 ```
 
-## API behavior
+## Prepared instructor session (2 October 2026)
 
-- `GET /` serves the responsive Humanizer interface from the same application and container.
-- `GET /static/*` serves the UI stylesheet and browser logic.
-- `GET /health` returns `200` when the process is alive and never calls external services.
-- `GET /ready` returns `200` when `OPENAI_API_KEY` is configured, otherwise `503`.
-- `POST /humanize` runs the LangGraph workflow and returns `503` without a key or `502` if the
-  upstream model request fails.
-- `GET /docs` provides Swagger UI for trying the API in a browser.
+- Live OpenAI app: http://localhost:8010 (the current private `.env` selects live mode).
+- Docker rehearsal: http://localhost:8011 (`humanizer-class`, `humanizer-lab:1.0`, explicit demo-mode override).
+- Guide: http://localhost:8010/guide or open `app/static/guide.html` directly.
+- LangSmith: [deployments-observability](https://smith.langchain.com/o/607d09f9-3e9c-40c5-85e9-0bda273c82c2/projects/p/479cdd60-3e00-4396-b17a-cdba626f75c9).
+
+Verified: 21 automated tests; lint and format checks; real OpenAI trace with nested model calls,
+tokens and cost; normal/slow/error demo traces; Docker build, health, non-root user, and trace export;
+UI result rendering, guide quiz feedback, progress checkboxes, and presenter view.
+Railway CLI sign-in was checked, but deployment is intentionally reserved for the live class.
+Azure and AWS are documented only. Use the classroom branch for this version of the lab.
+
+The student ZIP includes source and `.env.example`, not the instructor's `.env` or credentials.
+Students can extract it and skip the guide's Git clone step.

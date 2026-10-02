@@ -10,3 +10,7 @@ __pycache__
 htmlcov
 tests
 README.md
+
+.env.*
+!.env.example
+.artifacts

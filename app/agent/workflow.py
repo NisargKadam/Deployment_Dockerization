@@ -1,5 +1,6 @@
 """Iterative LangGraph workflow backed by LangChain's OpenAI integration."""
 
+from time import perf_counter
 from typing import Any, Literal, TypedDict
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -21,6 +22,7 @@ class HumanizerState(TypedDict):
     feedback: list[str]
     score: float
     passes: int
+    steps: list[dict[str, Any]]
 
 
 class Evaluation(BaseModel):
@@ -54,6 +56,7 @@ def build_humanizer_graph(
     """Build a testable rewrite/evaluate loop from model-like runnables."""
 
     async def rewrite(state: HumanizerState) -> dict[str, Any]:
+        started = perf_counter()
         feedback = "\n".join(f"- {item}" for item in state["feedback"]) or "None yet."
         response = await writer.ainvoke(
             [
@@ -72,9 +75,21 @@ def build_humanizer_graph(
         rewritten = response.text.strip()
         if not rewritten:
             raise ValueError("the model returned an empty rewrite")
-        return {"current_text": rewritten, "passes": state["passes"] + 1}
+        return {
+            "current_text": rewritten,
+            "passes": state["passes"] + 1,
+            "steps": [
+                *state.get("steps", []),
+                {
+                    "name": "rewrite",
+                    "pass": state["passes"] + 1,
+                    "duration_ms": round((perf_counter() - started) * 1000, 1),
+                },
+            ],
+        }
 
     async def evaluate(state: HumanizerState) -> dict[str, Any]:
+        started = perf_counter()
         result = await evaluator.ainvoke(
             [
                 SystemMessage(content=_EVALUATOR_INSTRUCTIONS),
@@ -86,7 +101,19 @@ def build_humanizer_graph(
                 ),
             ]
         )
-        return {"score": result.score, "feedback": result.feedback}
+        return {
+            "score": result.score,
+            "feedback": result.feedback,
+            "steps": [
+                *state.get("steps", []),
+                {
+                    "name": "evaluate",
+                    "pass": state["passes"],
+                    "score": result.score,
+                    "duration_ms": round((perf_counter() - started) * 1000, 1),
+                },
+            ],
+        }
 
     def after_evaluation(state: HumanizerState) -> Literal["rewrite", "__end__"]:
         if state["score"] >= score_threshold or state["passes"] >= max_passes:

@@ -20,7 +20,19 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "humanizer-agent"
-    environment: Literal["local", "test", "production"] = "local"
+    app_mode: Literal["live", "demo"] = "live"
+    enable_demo_scenarios: bool = False
+    class_access_token: SecretStr | None = None
+    langsmith_tracing: bool = False
+    langsmith_api_key: SecretStr | None = None
+    langsmith_project: str = "deployments-observability"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_workspace_id: str = ""
+    langsmith_hide_inputs: bool = False
+    langsmith_hide_outputs: bool = False
+    environment: Literal["local", "docker", "railway", "azure", "aws", "test", "production"] = (
+        "local"
+    )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     port: int = Field(default=PORT, ge=1, le=65535)
     openai_api_key: SecretStr | None = None
