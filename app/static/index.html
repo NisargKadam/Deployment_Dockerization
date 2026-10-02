@@ -7,8 +7,8 @@
       name="description"
       content="Rewrite stiff, generic text into clear, natural language with a LangGraph-powered editor."
     />
-    <title>Humanizer — Writing that sounds like you</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2218%22 fill=%22%235844e8%22/><path d=%22M19 43V21h7v8h12v-8h7v22h-7v-8H26v8z%22 fill=%22white%22/></svg>" />
+    <title>Humanizer Lab · Deployments and observability</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2218%22 fill=%22%23196854%22/><path d=%22M19 43V21h7v8h12v-8h7v22h-7v-8H26v8z%22 fill=%22white%22/></svg>" />
     <link rel="stylesheet" href="/static/styles.css" />
     <script src="/static/app.js" defer></script>
   </head>
@@ -22,10 +22,11 @@
             <path d="M9 23V9h4.5v5h5V9H23v14h-4.5v-5h-5v5z" />
           </svg>
         </span>
-        <span>Humanizer</span>
+        <span>Humanizer<span class="brand-sub">THE DEPLOYMENT LAB</span></span>
       </a>
 
       <nav class="header-actions" aria-label="Application links">
+        <a class="guide-link" href="/guide">Class guide ↗</a>
         <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">
           API docs <span aria-hidden="true">↗</span>
         </a>
@@ -37,20 +38,26 @@
     </header>
 
     <main class="shell">
-      <section class="hero" aria-labelledby="page-title">
-        <div class="eyebrow"><span></span> LangGraph writing studio</div>
-        <h1 id="page-title">Keep the meaning.<br /><em>Lose the machine.</em></h1>
-        <p>
-          Turn rigid, generic drafts into clear writing with rhythm, restraint, and a distinctly
-          human voice—without changing what you meant.
-        </p>
-        <div class="hero-notes" aria-label="Workflow facts">
-          <span><strong>01</strong> Meaning preserved</span>
-          <span><strong>02</strong> Quality reviewed</span>
-          <span><strong>03</strong> Up to 3 passes</span>
+      <section class="hero lab-hero" aria-labelledby="page-title">
+        <div>
+          <div class="eyebrow"><span></span> Deployments and observability</div>
+          <h1 id="page-title">Keep the meaning.<br /><em>See every step.</em></h1>
+          <p>Better writing is the output. Understanding how it gets there is the lesson.
+            Rewrite a draft, follow the trace, then ship the same app in a container.</p>
+          <div class="hero-notes"><span><strong>01</strong> Run it</span><span><strong>02</strong> Observe it</span><span><strong>03</strong> Deploy it</span></div>
         </div>
+        <aside class="lab-card" aria-label="Lab configuration">
+          <div class="lab-card-heading"><span class="live-dot"></span> YOUR LAB ENVIRONMENT</div>
+          <dl class="config-list">
+            <div><dt>Runtime</dt><dd id="config-mode">Loading…</dd></div>
+            <div><dt>Model</dt><dd id="config-model">—</dd></div>
+            <div><dt>LangSmith</dt><dd id="config-tracing">Checking…</dd></div>
+            <div><dt>Project</dt><dd id="config-project">—</dd></div>
+          </dl>
+          <a href="https://smith.langchain.com" target="_blank" rel="noreferrer">Open LangSmith <span>↗</span></a>
+        </aside>
       </section>
-
+      <div class="mode-banner" id="mode-banner" role="status">Loading classroom configuration…</div>
       <section class="workspace" aria-label="Humanizer workspace">
         <article class="panel input-panel">
           <div class="panel-heading">
@@ -102,6 +109,12 @@
               </div>
             </div>
 
+            <div class="lab-controls">
+              <div class="field"><label for="scenario">Trace experiment</label><select id="scenario" disabled>
+                <option value="normal">Normal run</option><option value="slow">Slow writer · +2s per pass</option><option value="error">Intentional writer error</option>
+              </select></div>
+              <div class="field is-hidden" id="access-field"><label for="access-token">Class access token</label><input id="access-token" type="password" autocomplete="off" placeholder="From your instructor" /></div>
+            </div>
             <div class="form-actions">
               <button class="secondary-button" id="reset-button" type="button">Clear</button>
               <button class="primary-button" id="submit-button" type="submit">
@@ -166,7 +179,7 @@
                   <div class="score-ring" id="score-ring" style="--score-angle: 0deg">
                     <div><strong id="score-value">0</strong><span>/ 100</span></div>
                   </div>
-                  <div><span>Human score</span><strong id="score-label">Polished</strong></div>
+                  <div><span id="score-kind">Model review score</span><strong id="score-label">Polished</strong></div>
                 </div>
                 <dl class="result-details">
                   <div><dt>Passes</dt><dd id="passes-value">—</dd></div>
@@ -179,6 +192,18 @@
         </article>
       </section>
 
+      <section class="telemetry-panel" aria-labelledby="telemetry-title">
+        <div class="telemetry-heading"><div><span class="panel-index">03 / Observe</span><h2 id="telemetry-title">The story behind this request</h2></div><a id="trace-link" class="guide-link is-hidden" target="_blank" rel="noreferrer">Inspect trace ↗</a></div>
+        <div class="metric-grid">
+          <div><span>Total latency</span><strong id="metric-latency">—</strong></div>
+          <div><span>LLM calls</span><strong id="metric-calls">—</strong></div>
+          <div><span>Tokens · in / out</span><strong id="metric-tokens">—</strong></div>
+          <div><span>Trace delivery</span><strong id="metric-trace">Awaiting a run</strong></div>
+        </div>
+        <div class="request-line">Request ID <code id="request-id">Run a draft to start investigating</code></div>
+        <div id="run-timeline" class="run-timeline"><p>Completed rewrite and review timings will appear here. Open LangSmith for the full nested trace.</p></div>
+        <p class="telemetry-note" id="telemetry-note">A trace explains one request. Logs record events. Aggregate metrics reveal patterns across requests.</p>
+      </section>
       <section class="process" aria-labelledby="process-title">
         <div class="process-copy">
           <span class="panel-index">Under the hood</span>
@@ -193,8 +218,8 @@
     </main>
 
     <footer class="site-footer shell">
-      <p>Powered by LangGraph + OpenAI</p>
-      <p>Your API key stays on the server.</p>
+      <p>Deployments and observability · A class by Nisarg Kadam</p>
+      <p>FastAPI · LangGraph · LangSmith · Docker</p>
     </footer>
   </body>
 </html>

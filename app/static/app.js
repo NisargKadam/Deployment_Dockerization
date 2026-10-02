@@ -40,6 +40,10 @@ const exampleText =
   "across their operational ecosystem.";
 
 let loadingTimer;
+let busy = false;
+let config = null;
+const scenario = document.querySelector("#scenario");
+const byId = (id) => document.getElementById(id);
 
 function countWords(value) {
   const trimmed = value.trim();
@@ -49,7 +53,7 @@ function countWords(value) {
 function updateInputCounts() {
   const words = countWords(sourceText.value);
   wordCount.textContent = `${words} ${words === 1 ? "word" : "words"}`;
-  characterCount.textContent = `${sourceText.value.length.toLocaleString()} / 12,000`;
+  characterCount.textContent = `${sourceText.value.length.toLocaleString()} / ${(config?.max_input_chars || 12000).toLocaleString()}`;
 }
 
 function showState(name) {
@@ -59,6 +63,8 @@ function showState(name) {
 }
 
 function setLoading(isLoading) {
+  busy = isLoading;
+  scenario.disabled = isLoading || !config?.scenarios_enabled;
   submitButton.disabled = isLoading;
   resetButton.disabled = isLoading;
   exampleButton.disabled = isLoading;
@@ -75,6 +81,28 @@ function setLoading(isLoading) {
     messageIndex = (messageIndex + 1) % loadingMessages.length;
     loadingMessage.textContent = loadingMessages[messageIndex];
   }, 2600);
+}
+
+async function loadConfig() {
+  try {
+    const response = await fetch("/api/config");
+    if (!response.ok) throw new Error("Configuration unavailable");
+    config = await response.json();
+    byId("config-mode").textContent = `${config.mode === "demo" ? "Rehearsal" : "Live model"} · ${config.environment}`;
+    byId("config-model").textContent = config.model;
+    byId("config-tracing").textContent = config.tracing.status;
+    byId("config-project").textContent = config.tracing.project;
+    byId("access-field").classList.toggle("is-hidden", !config.access_token_required);
+    scenario.disabled = !config.scenarios_enabled;
+    sourceText.maxLength = config.max_input_chars;
+    byId("score-kind").textContent = config.mode === "demo" ? "Synthetic demo score" : "Model review score";
+    byId("mode-banner").textContent = (config.mode === "demo"
+      ? "REHEARSAL MODE · Deterministic edits and synthetic review scores. No LLM calls or token charges."
+      : "LIVE MODEL · Real OpenAI calls. Review scores are model opinions, not an AI detector or a guarantee of factual accuracy.")
+      + (config.tracing.enabled ? " LangSmith tracing is configured; use fictional classroom text." : " LangSmith tracing is off.")
+      + ` The graph stops at ${config.score_threshold}/100 or ${config.max_passes} passes.`;
+    updateInputCounts();
+  } catch (_error) { byId("mode-banner").textContent = "Unable to load lab configuration. Refresh once the server is running."; }
 }
 
 async function checkService() {
@@ -109,6 +137,7 @@ function renderResult(data) {
 
 async function humanize(event) {
   event.preventDefault();
+  if (busy) return;
   const text = sourceText.value.trim();
   if (!text) {
     sourceText.focus();
@@ -118,25 +147,32 @@ async function humanize(event) {
   setLoading(true);
   copyButton.disabled = true;
   showState("loading");
+  resetTelemetry("Running…");
 
   try {
     const response = await fetch("/humanize", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json",
+        "X-Class-Token": byId("access-token").value },
       body: JSON.stringify({
         text,
         audience: audience.value.trim() || "general readers",
         tone: tone.value,
+        scenario: scenario.value,
       }),
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.detail || "The request could not be completed.");
+      if (data.detail?.request_id) renderTelemetry(data.detail);
+      const message = typeof data.detail === "string" ? data.detail : data.detail?.message;
+      throw new Error(message || (response.status === 422 ? "Check your text length and writing preferences." : "The request could not be completed."));
     }
     renderResult(data);
+    renderTelemetry(data);
   } catch (error) {
     errorMessage.textContent = error.message || "Check your connection and try again.";
     showState("error");
+    if (byId("metric-trace").textContent === "Running…") resetTelemetry("Request failed");
   } finally {
     setLoading(false);
   }
@@ -157,6 +193,7 @@ async function copyResult() {
 
 function resetWorkspace() {
   form.reset();
+  resetTelemetry();
   sourceText.value = "";
   audience.value = "general readers";
   resultCopy.textContent = "";
@@ -183,3 +220,41 @@ exampleButton.addEventListener("click", () => {
 
 updateInputCounts();
 checkService();
+loadConfig();
+
+function resetTelemetry(status = "Awaiting a run") {
+  ["metric-latency", "metric-calls", "metric-tokens"].forEach(id => byId(id).textContent = "—");
+  byId("metric-trace").textContent = status;
+  byId("request-id").textContent = "—";
+  byId("run-timeline").replaceChildren();
+  byId("trace-link").classList.add("is-hidden");
+  byId("trace-link").removeAttribute("href");
+  byId("telemetry-note").textContent = "Open LangSmith for the full nested trace. Delivery is verified in LangSmith, not by a local success response.";
+}
+
+function renderTelemetry(data) {
+  byId("metric-latency").textContent = `${(data.duration_ms / 1000).toFixed(2)} s`;
+  byId("metric-calls").textContent = data.usage ? data.usage.llm_calls : (data.mode === "demo" ? "0 · rehearsal" : "—");
+  byId("metric-tokens").textContent = data.usage ? `${data.usage.input_tokens} / ${data.usage.output_tokens}` : "Not measured";
+  byId("metric-trace").textContent = data.trace?.status || "off";
+  byId("request-id").textContent = data.request_id;
+  const link = byId("trace-link");
+  try {
+    const url = new URL(data.trace?.url);
+    if (url.protocol === "https:" && (url.hostname === "smith.langchain.com" || url.hostname.endsWith(".smith.langchain.com"))) {
+      link.href = url.href;
+      link.classList.remove("is-hidden");
+    }
+  } catch (_) { /* No authenticated trace URL is available. */ }
+  byId("run-timeline").replaceChildren();
+  for (const step of data.steps || []) {
+    const card = document.createElement("div"); card.className = "run-step";
+    const label = document.createElement("strong"); label.textContent = `${step.name} · pass ${step.pass}`;
+    const detail = document.createElement("span");
+    detail.textContent = `${step.duration_ms.toFixed(0)} ms${step.score !== undefined ? ` · score ${step.score}` : ""}`;
+    card.append(label, detail); byId("run-timeline").append(card);
+  }
+  byId("telemetry-note").textContent = data.mode === "demo"
+    ? "Timings are measured. Demo scores are synthetic; token usage and cost are not fabricated. LangSmith ingestion is asynchronous—refresh its project to verify delivery."
+    : "Tokens come from provider usage. Inspect the LLM child runs in LangSmith for prompts, responses, and supported model cost estimates. Queued does not prove delivery.";
+}

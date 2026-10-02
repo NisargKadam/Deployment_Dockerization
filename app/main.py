@@ -1,5 +1,6 @@
 """FastAPI application factory and local process entry point."""
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -11,8 +12,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api.routes import router
-from app.config import PORT, settings
+from app.config import settings
 from app.logging_conf import configure_logging
+from app.telemetry import get_langsmith_client
 
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
@@ -26,6 +28,8 @@ async def lifespan(_application: FastAPI) -> AsyncIterator[None]:
         extra={"event": "application.started", "service": settings.app_name},
     )
     yield
+    if client := get_langsmith_client():
+        await asyncio.to_thread(client.flush, timeout=5)
     logger.info(
         "application stopped",
         extra={"event": "application.stopped", "service": settings.app_name},
@@ -42,6 +46,10 @@ def create_app() -> FastAPI:
     async def user_interface() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
 
+    @application.get("/guide", include_in_schema=False)
+    async def classroom_guide() -> FileResponse:
+        return FileResponse(STATIC_DIR / "guide.html")
+
     return application
 
 
@@ -51,4 +59,4 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_config=None)
+    uvicorn.run(app, host="0.0.0.0", port=settings.port, log_config=None)

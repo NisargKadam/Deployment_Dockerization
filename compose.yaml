@@ -1,8 +1,12 @@
 services:
   api:
+    image: humanizer-lab:1.0
     build: .
     env_file:
       - .env
+    environment:
+      PORT: "8000"
+      ENVIRONMENT: docker
     ports:
-      - "${PORT:-8000}:${PORT:-8000}"
+      - "127.0.0.1:8011:8000"
     restart: unless-stopped

@@ -914,3 +914,46 @@ kbd {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Classroom edition: quieter canvas, compact workspace, evidence beside the output. */
+:root { --violet:#196854; --violet-dark:#0e5140; --lime:#d6ee94; --paper:#f2f3ed; --ink:#1d3029; --line:#d7ddd4; }
+.brand-sub { display:block; margin-top:4px; font-size:8px; letter-spacing:.17em; color:var(--muted); }
+.brand-mark { background:var(--ink); box-shadow:none; }
+.guide-link { display:inline-flex; align-items:center; gap:15px; padding:11px 17px; border:1px solid var(--line); border-radius:9px; color:var(--ink); font-size:12px; font-weight:700; text-decoration:none; background:var(--panel); }
+.guide-link:hover { border-color:var(--violet); color:var(--violet); }
+.lab-hero { display:grid; grid-template-columns:1.5fr 1fr; gap:70px; align-items:center; padding:52px 0 34px; }
+.lab-hero h1 { font-size:clamp(48px,5.5vw,76px); line-height:1; letter-spacing:-.055em; }
+.lab-hero p { max-width:600px; font-size:15px; color:var(--muted); line-height:1.7; }
+.lab-hero .hero-notes { margin-top:22px; }
+.lab-card { padding:26px; background:#1d352c; color:#f3f7ea; border-radius:18px; box-shadow:0 14px 35px #1c352c15; }
+.lab-card-heading { font-size:10px; font-weight:700; letter-spacing:.12em; display:flex; gap:9px; align-items:center; }
+.live-dot { display:inline-block; width:7px; height:7px; background:#c5e992; border-radius:50%; }
+.config-list { margin:22px 0; }
+.config-list div { display:flex; justify-content:space-between; gap:16px; padding:10px 0; font-size:12px; border-bottom:1px solid #ffffff16; }
+.config-list dt { color:#b0c5b7; }.config-list dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+.lab-card a { display:flex; justify-content:space-between; color:#d9efa5; font-size:12px; text-decoration:none; }
+.mode-banner { margin-bottom:20px; padding:13px 18px; border:1px solid #d4dfbb; border-radius:10px; background:#e9efd9; color:#425535; font-size:12px; line-height:1.6; }
+.lab-controls { display:grid; gap:14px; margin-top:17px; }
+.lab-controls .field { gap:8px; }.lab-controls select { width:100%; }
+.workspace { box-shadow:0 10px 35px #24372c07; border-radius:18px; }
+.panel { padding:28px; } textarea { min-height:240px; }
+.telemetry-panel { margin-top:24px; padding:28px; border:1px solid var(--line); border-radius:18px; background:var(--panel); }
+.telemetry-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.telemetry-heading h2 { font-size:21px; letter-spacing:-.025em; margin:9px 0 0; }
+.metric-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin:26px 0 20px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--line); }
+.metric-grid > div { background:#f7f8f2; padding:20px; }
+.metric-grid span { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+.metric-grid strong { display:block; font-size:21px; margin-top:9px; font-weight:600; }
+#metric-trace { font-size:13px; line-height:1.6; }
+.request-line { display:flex; gap:16px; font-size:11px; color:var(--muted); align-items:center; }
+.request-line code { color:var(--ink); overflow-wrap:anywhere; }
+.run-timeline { display:flex; flex-wrap:wrap; gap:10px; margin:20px 0; }.run-timeline p { color:var(--muted); font-size:12px; }
+.run-step { border:1px solid var(--line); border-left:3px solid var(--violet); background:#f7f9f4; border-radius:8px; padding:14px 18px; min-width:155px; flex:1; }
+.run-step strong { display:block; font-size:12px; text-transform:capitalize; }.run-step span { display:block; font-size:11px; color:var(--muted); margin-top:8px; }
+.telemetry-note { font-size:11px; line-height:1.7; color:var(--muted); margin:0; }
+.process { padding:65px 0; }.process h2 { font-size:40px; }
+button:focus-visible, a:focus-visible, select:focus-visible { outline:3px solid #b2cf74; outline-offset:4px; }
+@media(max-width:920px) { .lab-hero { gap:28px; grid-template-columns:1fr 1fr; }.lab-hero h1 { font-size:54px; }.metric-grid { grid-template-columns:1fr 1fr; } }
+@media(max-width:620px) { .lab-hero { grid-template-columns:1fr; padding-top:32px; gap:16px; }.lab-hero h1 { font-size:48px; }.lab-card { padding:21px; }.lab-hero .hero-notes { font-size:10px; }.hero-notes { display:flex; flex-wrap:wrap; }.header-actions { gap:8px; }.service-pill { display:none; }.guide-link { padding:9px 11px; }.telemetry-panel { padding:20px; }.telemetry-heading { align-items:flex-start; flex-direction:column; }.metric-grid > div { padding:14px; }.metric-grid strong { font-size:19px; }.request-line { flex-direction:column; align-items:flex-start; gap:7px; }.panel { padding:22px 18px; } }
+
+.primary-button { box-shadow:0 8px 20px rgba(25,104,84,.15); }

@@ -73,7 +73,7 @@ async def test_humanize_requires_an_api_key() -> None:
 @pytest.mark.asyncio
 async def test_humanize_returns_the_graph_result(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeGraph:
-        async def ainvoke(self, state: dict[str, object]) -> dict[str, object]:
+        async def ainvoke(self, state: dict[str, object], **_kwargs) -> dict[str, object]:
             return {**state, "current_text": "A natural rewrite.", "score": 91.0, "passes": 2}
 
     monkeypatch.setattr("app.api.routes.settings.openai_api_key", SecretStr("test-key"))
@@ -87,7 +87,8 @@ async def test_humanize_returns_the_graph_result(monkeypatch: pytest.MonkeyPatch
         )
 
     assert response.status_code == 200
-    assert response.json() == {
+    data = response.json()
+    assert {key: data[key] for key in ("text", "score", "passes", "model")} == {
         "text": "A natural rewrite.",
         "score": 91.0,
         "passes": 2,

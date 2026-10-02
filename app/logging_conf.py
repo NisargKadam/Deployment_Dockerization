@@ -16,8 +16,21 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        for field in ("service", "event"):
-            if value := getattr(record, field, None):
+        for field in (
+            "service",
+            "event",
+            "request_id",
+            "environment",
+            "mode",
+            "scenario",
+            "duration_ms",
+            "passes",
+            "score",
+            "input_tokens",
+            "output_tokens",
+            "error_type",
+        ):
+            if (value := getattr(record, field, None)) is not None:
                 payload[field] = value
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)

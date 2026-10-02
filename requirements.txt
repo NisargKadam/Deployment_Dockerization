@@ -5,3 +5,4 @@ langgraph==1.2.11
 pydantic==2.13.5
 pydantic-settings==2.15.0
 uvicorn==0.52.4
+langsmith==0.14.3
