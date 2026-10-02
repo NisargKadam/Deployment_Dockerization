@@ -2,8 +2,7 @@
 
 A classroom lab built from [NisargKadam/Deployment_Dockerization](https://github.com/NisargKadam/Deployment_Dockerization).
 The Humanizer app runs a bounded LangGraph rewrite/review workflow. Students investigate it in
-LangSmith, build a Docker image, run a container, and deploy to Railway. Azure and AWS are discussion
-sections, with no infrastructure provisioned there.
+LangSmith, build a Docker image, run a container, and deploy to Railway. Azure and AWS include optional CLI deployment walkthroughs; no cloud infrastructure is provisioned by generating the guide.
 
 **Start with the [standalone HTML class guide](app/static/guide.html)**. It is also served at `/guide`.
 It includes a 90-minute lesson plan, copyable commands, expected results, presenter view, topic
@@ -69,19 +68,49 @@ estimates; the application does not invent prices or token usage.
 
 ## Docker
 
+Run these commands in `Deployment_Dockerization`, the folder containing `Dockerfile`.
+Activating `.venv` does **not** change directories, and Docker does not need the virtualenv.
+This block works from either the parent `Deployments` folder or the project folder (macOS/Linux):
+
 ```bash
-docker build -t humanizer-lab:1.0 .
+if [ -d Deployment_Dockerization ]; then cd Deployment_Dockerization; fi
+pwd
+ls Dockerfile .env
+```
+
+Start Docker Desktop first (`open -a Docker` on macOS). Wait until `docker version` shows
+both **Client** and **Server**. A missing `docker.sock` means the engine is not ready yet.
+
+```bash
+docker info >/dev/null && docker build -t humanizer-lab:1.0 .
+docker image ls humanizer-lab
+docker history humanizer-lab:1.0
+```
+
+Only continue after a successful build: an existing image with this tag can be left over from
+an earlier rehearsal. Before repeating the create step, check `docker ps -a --filter name=humanizer-class`.
+If the classroom container already exists, run `docker stop humanizer-class` followed by
+`docker rm humanizer-class` to recreate it with the newly built image. This removes that
+container's writable layer; this app does not persist drafts.
+
+```bash
 docker create --name humanizer-class --env-file .env -e PORT=8000 -e ENVIRONMENT=docker -p 127.0.0.1:8011:8000 humanizer-lab:1.0
 docker start humanizer-class
 ```
 
 Open **http://localhost:8011**. The internal port is 8000; the host port is 8011.
+The container uses the mode in `.env`. For a rehearsal without model calls, add
+`-e APP_MODE=demo` to `docker create` before the image name.
 
 ```bash
+curl --fail --retry 10 --retry-all-errors --retry-delay 1 http://localhost:8011/health
 docker logs --tail 30 humanizer-class
 docker inspect --format '{{.State.Health.Status}}' humanizer-class
-python scripts/smoke.py --url http://localhost:8011 --verify-trace
 ```
+
+Health may initially show `starting`; allow a probe interval for `healthy`.
+With the local virtualenv activated, run `python scripts/smoke.py --url http://localhost:8011`.
+Add `--verify-trace` only when LangSmith is configured and tracing is enabled.
 
 Or use `docker compose up --build -d` (stop the named container first to free port 8011).
 The image runs as a non-root user, includes `/guide`, and excludes `.env`, Git history, and the local
@@ -162,7 +191,7 @@ Verified: 21 automated tests; lint and format checks; real OpenAI trace with nes
 tokens and cost; normal/slow/error demo traces; Docker build, health, non-root user, and trace export;
 UI result rendering, guide quiz feedback, progress checkboxes, and presenter view.
 Railway CLI sign-in was checked, but deployment is intentionally reserved for the live class.
-Azure and AWS are documented only. Use the classroom branch for this version of the lab.
+Azure and AWS have optional CLI walkthroughs (not deployed or cloud-tested). Use the classroom branch for this version of the lab.
 
 The student ZIP includes source and `.env.example`, not the instructor's `.env` or credentials.
 Students can extract it and skip the guide's Git clone step.

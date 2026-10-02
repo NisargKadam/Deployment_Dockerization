@@ -3,6 +3,8 @@
 from html import escape
 from pathlib import Path
 
+from cloud_cli import AWS, AZURE, render_steps
+
 ROOT = Path(__file__).resolve().parents[1]
 sections = []
 
@@ -156,11 +158,19 @@ chapter(
 <h3>2. Inspect .dockerignore</h3>"""
     + code((ROOT / ".dockerignore").read_text(), ".dockerignore")
     + """<p><code>.gitignore</code> controls Git tracking; <code>.dockerignore</code> controls the build context. You need both. The Dockerfile copies only application files and dependencies, so the private <code>.env</code> never enters the image.</p>
-<h3>3. Build and inspect</h3>"""
-    + code("""docker version
-docker build -t humanizer-lab:1.0 .
+<h3>3. Build and inspect</h3><p>Open a second terminal in <code>Deployment_Dockerization</code>, the folder containing <code>Dockerfile</code>. Activating <code>.venv</code> does not change directories; Docker does not need the virtualenv. This block works from either the parent <code>Deployments</code> folder or the project folder:</p>"""
+    + code(
+        """if [ -d Deployment_Dockerization ]; then cd Deployment_Dockerization; fi
+pwd
+ls Dockerfile .env""",
+        "macOS / Linux · check the build directory",
+    )
+    + """<p>On Windows, open the terminal in the project folder and use <code>dir Dockerfile</code> to check it. Start Docker Desktop from Applications (macOS: <code>open -a Docker</code>) or the Start menu. Wait until <code>docker version</code> shows both <b>Client</b> and <b>Server</b> before building. A missing <code>docker.sock</code> means the engine is not ready.</p>"""
+    + code("""docker version""")
+    + code("""docker build -t humanizer-lab:1.0 .
 docker image ls humanizer-lab
 docker history humanizer-lab:1.0""")
+    + """<p>Continue only after the build succeeds. An image listed after a failed build may be from an earlier rehearsal. If Docker cannot find <code>Dockerfile</code>, check the current directory again.</p>"""
     + note(
         "Explain the command",
         "<code>-t</code> gives the image a name and tag. The final <code>.</code> makes the current directory the build context. Building an image does not start the app.",
@@ -179,7 +189,12 @@ chapter(
     "Run a container",
     "An image becomes a running service.",
     "Keep the local Python app on port 8010. Publish the container on port 8011 so students can compare them side by side.",
-    """<h3>1. Create, then start</h3><p>Use the <code>.env</code> you already configured. The command overrides the internal port to 8000 and tags traces as <code>docker</code>.</p>"""
+    """<h3>1. Create, then start</h3><p>Stay in <code>Deployment_Dockerization</code> and use the <code>.env</code> you already configured. The command overrides the internal port to 8000 and tags traces as <code>docker</code>. It uses the mode in your env file; for a rehearsal without model calls, add <code>-e APP_MODE=demo</code> before the image name.</p>
+<details><summary>Repeating the demo? Clear the previous classroom container first</summary><p>Check for the existing container. If it exists, stop and remove it before the create step so the new container uses the rebuilt image. This deletes its writable layer; the app does not persist drafts. If no container is listed, skip stop/remove.</p>"""
+    + code("""docker ps -a --filter name=humanizer-class""")
+    + code("""docker stop humanizer-class
+docker rm humanizer-class""")
+    + """</details>"""
     + code("""docker create --name humanizer-class --env-file .env -e PORT=8000 -e ENVIRONMENT=docker -p 127.0.0.1:8011:8000 humanizer-lab:1.0
 docker ps -a
 docker start humanizer-class
@@ -190,11 +205,12 @@ docker ps""")
     )
     + """
 <h3>2. Open and verify</h3><p>Open <a href="http://localhost:8011">localhost:8011</a> and submit the sample. The interface and behavior should match your local app.</p>"""
-    + code("""curl http://localhost:8011/health
+    + code("""curl --fail --retry 10 --retry-all-errors --retry-delay 1 http://localhost:8011/health
 docker logs --tail 30 humanizer-class
 docker inspect --format '{{.State.Health.Status}}' humanizer-class
-docker exec humanizer-class id
-python scripts/smoke.py --url http://localhost:8011 --verify-trace""")
+docker exec humanizer-class id""")
+    + """<p>For the request check, activate your local virtualenv in this terminal. Add <code>--verify-trace</code> only if LangSmith is configured and tracing is enabled. In live mode, this submits a model request.</p>"""
+    + code("""python scripts/smoke.py --url http://localhost:8011""")
     + """<p>Health may initially be <code>starting</code>; allow a probe interval before expecting <code>healthy</code>. The <code>id</code> command should show the app user, not root. Find the new trace’s <code>docker</code> tag.</p>
 <div class="port-map"><b>Browser</b><span>localhost:8011</span><i>→</i><b>Docker port mapping</b><i>→</i><span>container:8000</span></div>
 <p>The left port belongs to your computer. The right port is where Python listens inside the container. Binding the host mapping to <code>127.0.0.1</code> keeps this local classroom instance on your machine.</p>
@@ -277,18 +293,13 @@ git push -u origin class/deployments-observability""")
 chapter(
     "azure",
     "07",
-    "Azure discussion",
+    "Azure CLI deployment",
     "Same app, Azure building blocks.",
-    "Discussion only in this class. Azure Container Registry stores the image; Azure Container Apps runs it behind managed ingress.",
+    "Optional CLI lab: Azure Container Registry stores the image; Azure Container Apps runs it behind managed HTTPS ingress.",
     """<div class="journey"><div><b>Dockerfile</b><span>Build</span></div><i>→</i><div><b>ACR</b><span>Store image</span></div><i>→</i><div><b>Container Apps</b><span>Run revision</span></div><i>→</i><div><b>HTTPS</b><span>Public ingress</span></div></div>
 <h3>Deployment walkthrough</h3><ol><li><b>Choose a subscription and region.</b> Put classroom resources in a dedicated resource group so cleanup is easy to identify. Confirm the subscription’s budget before provisioning.</li><li><b>Create Azure Container Registry (ACR).</b> Build and push a Linux image using ACR’s remote build, or Docker with the target platform.</li><li><b>Create a Container Apps environment and app.</b> Point the app at your ACR image/tag. Grant its managed identity permission to pull that image rather than distributing registry passwords.</li><li><b>Set ingress.</b> Enable external HTTP ingress and set the target port to <code>8000</code>. Set runtime <code>PORT=8000</code> and <code>ENVIRONMENT=azure</code>.</li><li><b>Add configuration and secrets.</b> Add LangSmith variables and the mode. Store API keys as Container Apps secrets or Key Vault references; reference them from environment variables. Managed identity needs the appropriate Key Vault permissions.</li><li><b>Define probes and scaling.</b> Use <code>/health</code> for liveness/startup and <code>/ready</code> for configuration readiness. Discuss minimum replicas, cold starts, and maximum replicas.</li><li><b>Verify and inspect.</b> Open the app’s HTTPS address, send a request, inspect console logs, then locate the <code>azure</code> trace in LangSmith.</li></ol>
-<h3>Illustrative image push</h3><p>These commands assume you already created and selected the correct registry and resource group. Replace the registry placeholder. They create a remote build and can incur charges; they are reference material, not part of today’s live demo.</p>"""
-    + code(
-        """az login
-az account show
-az acr build --registry YOUR_REGISTRY_NAME --image humanizer-lab:1.0 .""",
-        "Reference only · Azure CLI",
-    )
+"""
+    + render_steps(AZURE, code)
     + """
 <table><thead><tr><th>Concern</th><th>Azure component</th></tr></thead><tbody><tr><td>Versioned image</td><td>Azure Container Registry</td></tr><tr><td>Running application</td><td>Azure Container Apps revision</td></tr><tr><td>Public routing</td><td>Ingress, target port 8000</td></tr><tr><td>Credentials</td><td>Container Apps secrets / Key Vault + managed identity</td></tr><tr><td>Platform evidence</td><td>Container console logs and Azure Monitor / Log Analytics</td></tr><tr><td>AI request evidence</td><td>LangSmith</td></tr></tbody></table>"""
     + note(
@@ -296,34 +307,30 @@ az acr build --registry YOUR_REGISTRY_NAME --image humanizer-lab:1.0 .""",
         "“If the URL loads but no traces appear, is this a container problem, an API-key problem, or a tracing configuration problem? Which evidence would you check first?”",
     )
     + """
-<p class="source">References: <a href="https://learn.microsoft.com/en-us/azure/container-apps/get-started-existing-container-image">Deploy an existing image</a> · <a href="https://learn.microsoft.com/en-us/azure/container-apps/manage-secrets">Container Apps secrets</a> · <a href="https://learn.microsoft.com/en-us/azure/container-apps/managed-identity-image-pull">Managed identity image pulls</a></p>""",
-    4,
-    False,
+<p class="source">References: <a href="https://learn.microsoft.com/en-us/cli/azure/containerapp">Container Apps CLI</a> · <a href="https://learn.microsoft.com/en-us/azure/container-apps/get-started-existing-container-image">Deploy an existing image</a> · <a href="https://learn.microsoft.com/en-us/azure/container-apps/manage-secrets">Container Apps secrets</a> · <a href="https://learn.microsoft.com/en-us/azure/container-apps/managed-identity-image-pull">Managed identity image pulls</a></p>""",
+    20,
+    True,
 )
 
 chapter(
     "aws",
     "08",
-    "AWS discussion",
+    "AWS CLI deployment",
     "Same app, AWS building blocks.",
-    "Discussion only in this class. Amazon ECR stores the image. Amazon ECS schedules tasks. AWS Fargate provides the compute without managing EC2 servers.",
+    "Optional CLI lab: Amazon ECR stores the image; ECS on Fargate runs it. The walkthrough below creates a dedicated network and a classroom endpoint.",
     """<div class="journey"><div><b>Docker image</b><span>Build + push</span></div><i>→</i><div><b>ECR</b><span>Registry</span></div><i>→</i><div><b>ECS / Fargate</b><span>Service + tasks</span></div><i>→</i><div><b>Load balancer</b><span>HTTPS traffic</span></div></div>
 <h3>Deployment walkthrough</h3><ol><li><b>Create a private ECR repository.</b> Authenticate Docker, tag the image with the repository URI, and push it.</li><li><b>Create an ECS cluster and Fargate task definition.</b> Set a compatible Linux CPU architecture, CPU/memory, the ECR image URI, and container port <code>8000</code>.</li><li><b>Separate IAM roles.</b> The task execution role allows image pulls, log delivery, and reading injected secrets. A task role is for AWS API access made by your running application; this app does not need broad AWS permissions.</li><li><b>Add runtime variables.</b> Set <code>PORT=8000</code>, <code>ENVIRONMENT=aws</code>, app mode, and LangSmith settings. Reference Secrets Manager or Parameter Store entries for credentials.</li><li><b>Create a service.</b> Choose VPC subnets, security groups, and a load balancer. Route the load balancer to container port 8000; use HTTPS with a certificate for a public deployment.</li><li><b>Allow outbound access.</b> The app needs HTTPS access to OpenAI and LangSmith. Private tasks usually require a NAT route for these public APIs. ECR and secrets access also require suitable routes or VPC endpoints.</li><li><b>Define health checks explicitly.</b> Set the load balancer check to <code>/health</code>. If using ECS container health checks, add them to the task definition; ECS does not simply monitor the Dockerfile’s health check.</li><li><b>Verify.</b> Inspect service events and CloudWatch logs, send a request, then find its <code>aws</code> LangSmith trace.</li></ol>
-<h3>Illustrative registry push</h3><p>Assumes an ECR repository named <code>humanizer-lab</code> already exists and AWS CLI credentials are configured. Replace the account ID and region. Do not execute cloud provisioning during this discussion.</p>"""
-    + code(
-        """aws ecr get-login-password --region YOUR_REGION | docker login --username AWS --password-stdin YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com
-docker buildx build --platform linux/amd64 -t YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/humanizer-lab:1.0 --push .""",
-        "Reference only · AWS CLI + Docker",
-    )
+"""
+    + render_steps(AWS, code)
     + note(
         "Why not teach App Runner as the default?",
         "AWS documents a new-customer availability change for App Runner. For a new student account, teach ECS/Fargate. ECS Express Mode is also worth exploring as a simpler setup path; check current regional availability and requirements.",
     )
     + """
 <table><thead><tr><th>Job</th><th>Railway</th><th>Azure</th><th>AWS</th></tr></thead><tbody><tr><td>Image build / storage</td><td>Managed build</td><td>ACR</td><td>ECR + Docker / build pipeline</td></tr><tr><td>Run the app</td><td>Service deployment</td><td>Container Apps revision</td><td>ECS service + Fargate tasks</td></tr><tr><td>Secrets</td><td>Service variables</td><td>Secrets / Key Vault</td><td>Secrets Manager / Parameter Store</td></tr><tr><td>Process logs</td><td>Deployment logs</td><td>Azure logs</td><td>CloudWatch Logs</td></tr><tr><td>AI traces</td><td>LangSmith</td><td>LangSmith</td><td>LangSmith</td></tr></tbody></table>
-<p class="source">References: <a href="https://docs.aws.amazon.com/AmazonECR/latest/userguide/ECR_on_ECS.html">ECR with ECS</a> · <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html">Fargate task configuration</a> · <a href="https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_HealthCheck.html">ECS health checks</a> · <a href="https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html">App Runner availability</a></p>""",
-    4,
-    False,
+<p class="source">References: <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ECS_AWSCLI_Fargate.html">Fargate CLI walkthrough</a> · <a href="https://docs.aws.amazon.com/cli/latest/reference/ecs/register-task-definition.html">Task definition CLI</a> · <a href="https://docs.aws.amazon.com/AmazonECR/latest/userguide/ECR_on_ECS.html">ECR with ECS</a> · <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html">Fargate task configuration</a> · <a href="https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_HealthCheck.html">ECS health checks</a> · <a href="https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html">App Runner availability</a></p>""",
+    20,
+    True,
 )
 
 chapter(
@@ -357,6 +364,7 @@ chapter(
     """<table><thead><tr><th>Symptom</th><th>Check next</th></tr></thead><tbody>
 <tr><td>Port already in use</td><td>Another process owns the host port. Keep it running if unrelated. Choose another local <code>PORT</code>, or change only the left side of Docker’s <code>-p</code> mapping.</td></tr>
 <tr><td>Cannot connect to Docker daemon</td><td>Start Docker Desktop and wait until <code>docker info</code> succeeds.</td></tr>
+<tr><td>Failed to read Dockerfile</td><td>You are in the wrong directory. From <code>Deployments</code>, run <code>cd Deployment_Dockerization</code>, then build again. Activating the virtualenv does not change the current directory.</td></tr>
 <tr><td>Container name already in use</td><td>Inspect <code>docker ps -a</code>. Start the existing class container, or stop/remove it before recreating it.</td></tr>
 <tr><td>Image builds but browser cannot connect</td><td>Inspect <code>docker logs</code>, <code>docker ps</code>, host mapping, internal <code>PORT</code>, and the <code>0.0.0.0</code> bind address.</td></tr>
 <tr><td>No LangSmith trace</td><td>Check tracing toggle, key, region, workspace, project, and restart. Run the setup verifier. Look for <code>telemetry.upload_failed</code>. Wait for asynchronous ingestion and refresh the correct project.</td></tr>
